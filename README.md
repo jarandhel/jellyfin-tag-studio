@@ -209,3 +209,10 @@ measures its own offset and sizes itself to the viewport on mount and on resize.
 
 - Collections bulk add/remove (planned; needs `ICollectionManager`)
 - Snapshot export/import for full restore after a library rebuild
+
+## License
+
+MIT - see [LICENSE](LICENSE).
+
+Not affiliated with the Jellyfin project. Built against Jellyfin 10.11; plugins are
+roughly one minor version compatible, so expect to rebuild for 10.12.
