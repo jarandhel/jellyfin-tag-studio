@@ -231,6 +231,11 @@ Builds the SPA, compiles the plugin, deploys it to a version-stamped plugin fold
 copies the bundle to a location the plugin prefers over its embedded copy — so UI-only
 changes take effect on a browser refresh and only C# changes need a restart.
 
+That override is ignored if it predates the plugin assembly. The build script writes it
+after compiling, so a developer's bundle always wins; but installing a release drops a
+newer DLL beside whatever bundle was last built locally, and without the check that stale
+bundle would silently shadow the version just installed.
+
 Override paths with environment variables if your toolchain or server lives elsewhere:
 
 ```powershell

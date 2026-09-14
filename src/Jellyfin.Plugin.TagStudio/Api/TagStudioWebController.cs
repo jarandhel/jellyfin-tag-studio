@@ -5,6 +5,7 @@ using MediaBrowser.Common.Configuration;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.TagStudio.Api;
 
@@ -21,10 +22,12 @@ public partial class TagStudioWebController : ControllerBase
     private const string ResourceName = "Jellyfin.Plugin.TagStudio.Web.index.html";
 
     private readonly IApplicationPaths _paths;
+    private readonly ILogger<TagStudioWebController> _logger;
 
-    public TagStudioWebController(IApplicationPaths paths)
+    public TagStudioWebController(IApplicationPaths paths, ILogger<TagStudioWebController> logger)
     {
         _paths = paths;
+        _logger = logger;
     }
 
     /// <summary>
@@ -105,7 +108,23 @@ public partial class TagStudioWebController : ControllerBase
         var overridePath = OverridePath;
         if (System.IO.File.Exists(overridePath))
         {
-            return System.IO.File.ReadAllText(overridePath, Encoding.UTF8);
+            // Only honour an override newer than the assembly itself. build.ps1 writes it
+            // after compiling, so a developer's bundle always wins - but installing a
+            // release drops a newer DLL beside a stale override, and without this check
+            // that old bundle would silently shadow the version just installed.
+            var assemblyPath = Assembly.GetExecutingAssembly().Location;
+            var overrideTime = System.IO.File.GetLastWriteTimeUtc(overridePath);
+
+            if (string.IsNullOrEmpty(assemblyPath)
+                || overrideTime >= System.IO.File.GetLastWriteTimeUtc(assemblyPath))
+            {
+                return System.IO.File.ReadAllText(overridePath, Encoding.UTF8);
+            }
+
+            _logger.LogWarning(
+                "Ignoring the bundle at {Path}: it predates this build of the plugin. "
+                + "Delete it, or re-run the build script, to stop this message.",
+                overridePath);
         }
 
         using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(ResourceName);
