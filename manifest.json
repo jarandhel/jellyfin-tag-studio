@@ -1,0 +1,12 @@
+[
+  {
+    "guid": "71b5006b-7144-4ef0-bee6-ae9f07d740b4",
+    "name": "Tag Studio",
+    "description": "Bulk tag, genre and collection management with an iTunes-style column browser: filter panes narrow a sortable table, multi-select rows, and edit tags in bulk from a dock with tri-state chips.",
+    "overview": "Bulk tag and genre management for Jellyfin.",
+    "owner": "jarandhel",
+    "category": "General",
+    "imageUrl": "",
+    "versions": []
+  }
+]

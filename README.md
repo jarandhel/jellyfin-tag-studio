@@ -38,10 +38,23 @@ writes never touch that endpoint.
 
 ## Installation
 
-1. Build (see below), or download a release.
-2. Copy `Jellyfin.Plugin.TagStudio.dll` into `<jellyfin-data>/plugins/Tag Studio_<version>/`.
+### From the plugin catalog
+
+1. **Dashboard → Plugins → Repositories → +**
+2. Add this manifest URL:
+   ```
+   https://raw.githubusercontent.com/jarandhel/jellyfin-tag-studio/main/manifest.json
+   ```
+3. **Dashboard → Plugins → Catalog → Tag Studio → Install**
+4. Restart Jellyfin.
+5. Open **Tag Studio** from the dashboard navigation.
+
+### Manually
+
+1. Download the ZIP from [Releases](https://github.com/jarandhel/jellyfin-tag-studio/releases),
+   or build it yourself (see below).
+2. Extract it into `<jellyfin-data>/plugins/Tag Studio_<version>/`.
 3. Restart Jellyfin.
-4. Open **Tag Studio** from the dashboard navigation.
 
 Jellyfin cannot unload a plugin assembly, so each new version needs its own version-stamped
 folder. The build script handles that.

@@ -1,0 +1,139 @@
+name: release
+
+# Cutting a version is `git tag v1.0.9.0 && git push --tags`. Everything below runs in
+# CI rather than on a maintainer's machine, so a release does not depend on whose
+# toolchain built it.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build, e.g. 1.0.9.0 (must match the csproj)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Resolve version
+        id: version
+        run: |
+          CSPROJ=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' \
+            src/Jellyfin.Plugin.TagStudio/Jellyfin.Plugin.TagStudio.csproj | head -1)
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF_NAME#v}"
+          else
+            TAG="${{ github.event.inputs.version }}"
+          fi
+          # A tag that disagrees with the csproj would ship a DLL whose assembly version
+          # does not match the manifest, and Jellyfin would install it under the wrong
+          # folder. Fail loudly instead.
+          if [ "$CSPROJ" != "$TAG" ]; then
+            echo "::error::Tag version $TAG does not match csproj version $CSPROJ"
+            exit 1
+          fi
+          echo "version=$CSPROJ" >> "$GITHUB_OUTPUT"
+
+      - name: Build SPA
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build plugin
+        working-directory: src/Jellyfin.Plugin.TagStudio
+        run: dotnet build -c Release -v minimal
+
+      - name: Package
+        id: package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          STAGE=$(mktemp -d)
+          cp src/Jellyfin.Plugin.TagStudio/bin/Release/net9.0/Jellyfin.Plugin.TagStudio.dll "$STAGE/"
+
+          cat > "$STAGE/meta.json" <<JSON
+          {
+            "category": "General",
+            "guid": "71b5006b-7144-4ef0-bee6-ae9f07d740b4",
+            "name": "Tag Studio",
+            "overview": "Bulk tag, genre and collection management.",
+            "description": "Bulk tag, genre and collection management with an iTunes-style column browser.",
+            "owner": "${{ github.repository_owner }}",
+            "targetAbi": "10.11.0.0",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.0000000Z)",
+            "version": "$VERSION",
+            "status": "Active",
+            "autoUpdate": false,
+            "imagePath": "",
+            "assemblies": []
+          }
+          JSON
+
+          ASSET="tag-studio_${VERSION}.zip"
+          # Zipped from inside the staging dir so the files sit at the archive root -
+          # Jellyfin extracts straight into plugins/<name>_<version>/.
+          (cd "$STAGE" && zip -r -X "$GITHUB_WORKSPACE/$ASSET" .)
+
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+          echo "checksum=$(md5sum "$ASSET" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          ASSET: ${{ steps.package.outputs.asset }}
+        run: |
+          NOTES=$(git log --pretty=format:'- %s' "$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || git rev-list --max-parents=0 HEAD)..HEAD" \
+                  | grep -v '^- Update plugin manifest' || echo "- See commit history")
+          gh release create "v$VERSION" "$ASSET" \
+            --title "v$VERSION" \
+            --notes "$NOTES" \
+            --verify-tag || gh release upload "v$VERSION" "$ASSET" --clobber
+
+      - name: Update manifest
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          CHECKSUM: ${{ steps.package.outputs.checksum }}
+          ASSET: ${{ steps.package.outputs.asset }}
+        run: |
+          ENTRY=$(jq -n \
+            --arg version "$VERSION" \
+            --arg changelog "Release v$VERSION" \
+            --arg targetAbi "10.11.0.0" \
+            --arg sourceUrl "https://github.com/${{ github.repository }}/releases/download/v$VERSION/$ASSET" \
+            --arg checksum "$CHECKSUM" \
+            --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{version:$version, changelog:$changelog, targetAbi:$targetAbi,
+              sourceUrl:$sourceUrl, checksum:$checksum, timestamp:$timestamp, dependencies:[]}')
+
+          # Newest first, and replace rather than duplicate if the version is re-released.
+          jq --argjson entry "$ENTRY" \
+            '.[0].versions = ([$entry] + (.[0].versions | map(select(.version != $entry.version))))' \
+            manifest.json > manifest.tmp && mv manifest.tmp manifest.json
+
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add manifest.json
+          git commit -m "Update plugin manifest for v$VERSION" || exit 0
+          git push origin HEAD:main
