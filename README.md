@@ -6,6 +6,8 @@ in bulk from a dock at the bottom.
 
 Built for **Jellyfin 10.11**.
 
+![The column browser filtered to untagged items, over the virtualized item table](docs/screenshot.png)
+
 ## Why
 
 Jellyfin's built-in metadata editor works one item at a time. There is no way to select
