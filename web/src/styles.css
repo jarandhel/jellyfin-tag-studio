@@ -97,6 +97,14 @@
   font: inherit;
 }
 
+/* a.ts-btn is the Settings link; it must not pick up the theme's anchor colour
+   or underline, or it reads as a link dropped among the buttons. */
+a.ts-btn {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
 .ts-btn {
   padding: 6px 12px;
   border-radius: var(--ts-radius);

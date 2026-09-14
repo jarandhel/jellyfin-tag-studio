@@ -501,6 +501,16 @@ export function App() {
             Empty collections…
           </button>
         )}
+        {/*
+          The dashboard resolves a plugin's settings link as
+            pages.filter(p => p.PluginId === id).find(p => p.EnableInMainMenu) ?? pages[0]
+          and EnableInMainMenu is on this page, so clicking Tag Studio in the plugins list
+          lands here rather than on the settings page. That leaves the settings page with
+          no route into it from the UI, so link it explicitly.
+        */}
+        <a class="ts-btn" href="#/configurationpage?name=TagStudioSettings">
+          Settings
+        </a>
         <button class="ts-btn" onClick={undoLast} disabled={!lastOperation || busy}>
           Undo
         </button>
