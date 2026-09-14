@@ -103,8 +103,43 @@ collection - which certainly does resolve `LinkedChildren` - takes **2.4s**, whi
 **listing** 100 collections takes 37-52s. Whatever dominates is in materialising the
 BoxSet itself, not in resolving its members.
 
-## Still worth reporting
+## Second hypothesis tested and ruled out
 
-The measurements stand on their own and reproduce trivially. Somebody who knows the DTO
-layer will likely recognise the cause immediately; the value here is the profile, not a
-diagnosis.
+`BoxSet.IsVisible` runs per collection and, when `LibraryFolderIds` is null, walks every
+member:
+
+```csharp
+var libraryFolderIds = LibraryFolderIds ?? GetLibraryFolderIds();
+
+public Guid[] GetLibraryFolderIds()
+    => FlattenItems(this, expandedFolders)
+        .SelectMany(LibraryManager.GetCollectionFolders)   // a lookup per member
+        .Select(i => i.Id).Distinct().ToArray();
+```
+
+`GetCollectionFolders` also re-materialises `GetUserRootFolder().Children` on every call.
+Only `BoxSetMetadataService.BeforeSaveInternal` ever populates the cache, so collections
+created by plugins never have it.
+
+Ruled out by refreshing all 239 collections on a copy of the library and measuring both
+servers at the same moment:
+
+| | run 1 | run 2 | run 3 |
+|---|---|---|---|
+| copy, all 239 refreshed | 35.4s | 32.8s | 34.2s |
+| live, not refreshed | 32.3s | 30.1s | |
+
+No improvement. (Measuring simultaneously matters: run-to-run variance on one server
+reaches 25%, enough to manufacture a convincing result from nothing.)
+
+## Where that leaves it
+
+Two plausible causes examined and eliminated. The profile is reproducible and the symptom
+is real, but the cause is unidentified. Anyone picking this up can skip `FindByPath` and
+`LibraryFolderIds`.
+
+Worth noting separately: nothing in Jellyfin maintains `LibraryFolderIds` when collection
+membership changes - `ICollectionManager` never touches it. Since `IsVisible` decides who
+can see a collection from that cached value, a collection edited outside a metadata
+refresh can carry a stale one. That is a correctness question rather than a performance
+one, and it is independent of everything above.

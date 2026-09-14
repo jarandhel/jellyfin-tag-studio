@@ -310,6 +310,7 @@ public class CollectionService
             }
         }
 
+        await RefreshLibraryFolderIdsAsync(changes, cancellationToken).ConfigureAwait(false);
         InvalidateMembershipCache();
 
         return new OperationResult
@@ -318,6 +319,57 @@ public class CollectionService
             Warnings = warnings,
             CollectionChanges = changes
         };
+    }
+
+    /// <summary>
+    /// Recompute BoxSet.LibraryFolderIds for the collections we changed.
+    ///
+    /// That field caches which library folders a collection's members live in, and
+    /// BoxSet.IsVisible uses it to decide who can see the collection:
+    ///
+    ///   var libraryFolderIds = LibraryFolderIds ?? GetLibraryFolderIds();
+    ///   return userLibraryFolderIds.Any(i => libraryFolderIds.Contains(i));
+    ///
+    /// Changing membership can change the answer - adding a Series to a collection that
+    /// previously held only Movies, say - but ICollectionManager never updates it, and
+    /// the only thing that does is BoxSetMetadataService.BeforeSaveInternal during a
+    /// metadata refresh. A collection this plugin creates or edits would otherwise carry
+    /// a stale value, or none at all, and be shown to the wrong set of users.
+    /// </summary>
+    private async Task RefreshLibraryFolderIdsAsync(
+        IReadOnlyList<CollectionChange> changes,
+        CancellationToken cancellationToken)
+    {
+        foreach (var id in changes.Select(c => c.CollectionId).Distinct())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Re-fetch: the in-memory instance predates the membership write.
+            if (_libraryManager.GetItemById(id) is not BoxSet boxSet)
+            {
+                continue;
+            }
+
+            try
+            {
+                var folderIds = boxSet.GetLibraryFolderIds();
+                if (boxSet.LibraryFolderIds is not null && boxSet.LibraryFolderIds.SequenceEqual(folderIds))
+                {
+                    continue;
+                }
+
+                boxSet.LibraryFolderIds = folderIds;
+                await _libraryManager
+                    .UpdateItemAsync(boxSet, boxSet.GetParent(), ItemUpdateType.MetadataImport, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Visibility falls back to computing this on demand, so a failure here is
+                // slow rather than wrong. Not worth failing the edit over.
+                _logger.LogWarning(ex, "Could not refresh LibraryFolderIds for collection {Name}", boxSet.Name);
+            }
+        }
     }
 
     /// <summary>Inverts a recorded set of changes. Used by undo.</summary>
@@ -344,6 +396,7 @@ public class CollectionService
             }
         }
 
+        await RefreshLibraryFolderIdsAsync(changes, cancellationToken).ConfigureAwait(false);
         InvalidateMembershipCache();
         return reverted;
     }
