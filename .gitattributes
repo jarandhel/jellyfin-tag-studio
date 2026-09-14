@@ -9,6 +9,8 @@
 *.json    text
 *.md      text
 *.ps1     text eol=crlf
+# CRLF in a shell script breaks the shebang on Linux.
+*.sh      text eol=lf
 *.csproj  text
 
 *.png binary

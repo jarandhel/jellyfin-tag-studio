@@ -183,8 +183,18 @@ click / ctrl-click / shift-click in both the panes and the table
 Requires the **.NET 9 SDK** and **Node 18+**.
 
 ```powershell
-./build.ps1
+./build.ps1     # Windows
 ```
+
+```bash
+./build.sh      # Linux / macOS
+```
+
+The plugin itself is platform independent - `net9.0`, no `RuntimeIdentifier`, every path
+through `Path.Combine` or Jellyfin's `IApplicationPaths` - so a DLL built on any OS runs
+on any Jellyfin host. Only the deploy scripts differ, and only in where they look for the
+toolchain and the data directory (`/var/lib/jellyfin`, `/config` for the linuxserver.io
+image, or `%ProgramData%\Jellyfin\Server`).
 
 Builds the SPA, compiles the plugin, deploys it to a version-stamped plugin folder, and
 copies the bundle to a location the plugin prefers over its embedded copy — so UI-only
