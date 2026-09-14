@@ -1,0 +1,4 @@
+bin/
+obj/
+node_modules/
+src/Jellyfin.Plugin.TagStudio/Web/index.html

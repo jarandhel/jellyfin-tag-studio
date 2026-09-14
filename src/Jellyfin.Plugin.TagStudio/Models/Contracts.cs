@@ -1,0 +1,155 @@
+namespace Jellyfin.Plugin.TagStudio.Models;
+
+/// <summary>Which string-list field an operation targets.</summary>
+public enum FieldKind
+{
+    Tag,
+    Genre
+}
+
+public class VocabularyEntry
+{
+    public string Name { get; set; } = string.Empty;
+
+    public FieldKind Kind { get; set; }
+
+    public int Count { get; set; }
+
+    /// <summary>True when the name matches a configured machine-tag prefix.</summary>
+    public bool IsMachine { get; set; }
+
+    /// <summary>Key used to group case/spacing variants together for typo detection.</summary>
+    public string NormalizedKey { get; set; } = string.Empty;
+}
+
+public class ItemQueryRequest
+{
+    public string? SearchTerm { get; set; }
+
+    public Guid? ParentId { get; set; }
+
+    /// <summary>Movie, Series, Season, Episode, BoxSet. Empty means Movie + Series.</summary>
+    public string[] ItemTypes { get; set; } = Array.Empty<string>();
+
+    /// <summary>OR within the list, AND against the other panes.</summary>
+    public string[] Tags { get; set; } = Array.Empty<string>();
+
+    public string[] Genres { get; set; } = Array.Empty<string>();
+
+    public int[] Years { get; set; } = Array.Empty<int>();
+
+    public string[] Studios { get; set; } = Array.Empty<string>();
+
+    /// <summary>Pseudo-filter: only items with no tags at all.</summary>
+    public bool UntaggedOnly { get; set; }
+
+    /// <summary>Pseudo-filter: only items with no genres at all.</summary>
+    public bool NoGenreOnly { get; set; }
+
+    public string SortBy { get; set; } = "Name";
+
+    public bool SortDescending { get; set; }
+
+    public int StartIndex { get; set; }
+
+    public int Limit { get; set; } = 200;
+}
+
+public class ItemRow
+{
+    public Guid Id { get; set; }
+
+    public string Name { get; set; } = string.Empty;
+
+    public string Type { get; set; } = string.Empty;
+
+    public int? Year { get; set; }
+
+    /// <summary>Shown in the hover card. A plain column, not gated by DtoOptions.</summary>
+    public string Overview { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Series name for episodes and seasons, so "Episode 3" is identifiable. Read from
+    /// the denormalised SeriesName rather than walking to the parent, which would be a
+    /// lookup per row.
+    /// </summary>
+    public string ParentName { get; set; } = string.Empty;
+
+    public int? IndexNumber { get; set; }
+
+    public int? ParentIndexNumber { get; set; }
+
+    public string[] Tags { get; set; } = Array.Empty<string>();
+
+    public string[] Genres { get; set; } = Array.Empty<string>();
+
+    public string[] Studios { get; set; } = Array.Empty<string>();
+
+    public DateTime DateCreated { get; set; }
+
+    public bool TagsLocked { get; set; }
+
+    public bool GenresLocked { get; set; }
+}
+
+public class ItemQueryResponse
+{
+    public IReadOnlyList<ItemRow> Items { get; set; } = Array.Empty<ItemRow>();
+
+    public int TotalCount { get; set; }
+}
+
+public class ApplyRequest
+{
+    public Guid[] ItemIds { get; set; } = Array.Empty<Guid>();
+
+    public string[] Add { get; set; } = Array.Empty<string>();
+
+    public string[] Remove { get; set; } = Array.Empty<string>();
+
+    public FieldKind Field { get; set; } = FieldKind.Tag;
+
+    /// <summary>Mirror Jellyfin's own delta propagation to seasons/episodes.</summary>
+    public bool PropagateToChildren { get; set; }
+}
+
+public class RenameRequest
+{
+    public string From { get; set; } = string.Empty;
+
+    /// <summary>Renaming onto an existing value performs a merge.</summary>
+    public string To { get; set; } = string.Empty;
+
+    public FieldKind Field { get; set; } = FieldKind.Tag;
+}
+
+public class OperationResult
+{
+    public Guid OperationId { get; set; }
+
+    public int ItemsChanged { get; set; }
+
+    public int ItemsSkipped { get; set; }
+
+    public IReadOnlyList<string> Warnings { get; set; } = Array.Empty<string>();
+}
+
+/// <summary>
+/// Everything the column browser needs, built in a single pass over the library.
+/// </summary>
+public class FacetsResponse
+{
+    public IReadOnlyList<VocabularyEntry> Tags { get; set; } = Array.Empty<VocabularyEntry>();
+
+    public IReadOnlyList<VocabularyEntry> Genres { get; set; } = Array.Empty<VocabularyEntry>();
+
+    public IReadOnlyList<VocabularyEntry> Years { get; set; } = Array.Empty<VocabularyEntry>();
+
+    public IReadOnlyList<VocabularyEntry> Studios { get; set; } = Array.Empty<VocabularyEntry>();
+
+    public int TotalItems { get; set; }
+
+    public int UntaggedCount { get; set; }
+
+    public int NoGenreCount { get; set; }
+}

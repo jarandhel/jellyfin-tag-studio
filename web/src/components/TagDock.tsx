@@ -1,0 +1,242 @@
+import { useMemo, useRef, useState } from 'preact/hooks';
+import type { VocabularyEntry } from '../api';
+
+export interface ChipModel {
+  name: string;
+  /** How many of the selected items already carry this value. */
+  present: number;
+  isMachine: boolean;
+}
+
+interface Props {
+  selectionSize: number;
+  chips: ChipModel[];
+  vocabulary: VocabularyEntry[];
+  add: Set<string>;
+  remove: Set<string>;
+  fieldLabel: string;
+  propagate: boolean;
+  showPropagate: boolean;
+  busy: boolean;
+  reserved: string[];
+  onToggle: (value: string) => void;
+  onStageAdd: (value: string) => void;
+  onStageRemove: (value: string) => void;
+  onPropagateChange: (value: boolean) => void;
+  onApply: () => void;
+  onRevert: () => void;
+}
+
+export function TagDock(props: Props) {
+  const {
+    selectionSize,
+    chips,
+    vocabulary,
+    add,
+    remove,
+    fieldLabel,
+    propagate,
+    showPropagate,
+    busy,
+    reserved,
+    onToggle,
+    onStageAdd,
+    onStageRemove,
+    onPropagateChange,
+    onApply,
+    onRevert
+  } = props;
+
+  const [draft, setDraft] = useState('');
+  const [highlight, setHighlight] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const pendingCount = add.size + remove.size;
+
+  const suggestions = useMemo(() => {
+    const term = draft.trim().toLowerCase();
+    if (!term) return [];
+    const existing = new Set(chips.map((c) => c.name.toLowerCase()));
+    return vocabulary
+      .filter(
+        (v) =>
+          v.name.toLowerCase().includes(term) &&
+          !existing.has(v.name.toLowerCase()) &&
+          !add.has(v.name)
+      )
+      .slice(0, 8);
+  }, [draft, vocabulary, chips, add]);
+
+  const offending = useMemo(
+    () => [...new Set([...draft].filter((c) => reserved.includes(c)))],
+    [draft, reserved]
+  );
+
+  const commit = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed || offending.length > 0) return;
+    onStageAdd(trimmed);
+    setDraft('');
+    setHighlight(0);
+    inputRef.current?.focus();
+  };
+
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setHighlight((h) => Math.min(h + 1, Math.max(0, suggestions.length - 1)));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setHighlight((h) => Math.max(0, h - 1));
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      commit(suggestions[highlight]?.name ?? draft);
+    } else if (event.key === 'Escape') {
+      setDraft('');
+    }
+  };
+
+  if (selectionSize === 0) {
+    return (
+      <div class="ts-dock">
+        <div class="ts-dock-head">
+          <span class="ts-dock-title">{fieldLabel}</span>
+          <span class="ts-hint">
+            Select items in the table to edit their {fieldLabel.toLowerCase()}. Click to select,
+            ctrl-click to extend, shift-click for a range.
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div class="ts-dock">
+      <div class="ts-dock-head">
+        <span class="ts-dock-title">
+          {fieldLabel} on {selectionSize.toLocaleString()} item{selectionSize === 1 ? '' : 's'}
+        </span>
+        {showPropagate && (
+          <label class="ts-hint" style="display:flex;align-items:center;gap:5px;cursor:pointer">
+            <input
+              type="checkbox"
+              checked={propagate}
+              onChange={(e) => onPropagateChange((e.target as HTMLInputElement).checked)}
+            />
+            also apply to seasons &amp; episodes
+          </label>
+        )}
+        <span class="ts-spacer" />
+        {pendingCount > 0 && (
+          <span class="ts-status">
+            {add.size > 0 && <span style="color:#3fb950">+{add.size} </span>}
+            {remove.size > 0 && <span style="color:var(--ts-danger)">−{remove.size}</span>}
+          </span>
+        )}
+        <button class="ts-btn" onClick={onRevert} disabled={pendingCount === 0 || busy}>
+          Revert
+        </button>
+        <button
+          class="ts-btn ts-btn-primary"
+          onClick={onApply}
+          disabled={pendingCount === 0 || busy}
+        >
+          {busy ? 'Applying…' : 'Apply'}
+        </button>
+      </div>
+
+      <div class="ts-chips">
+        {chips.map((chip) => {
+          const classes = ['ts-chip'];
+          if (add.has(chip.name)) classes.push('state-adding');
+          else if (remove.has(chip.name)) classes.push('state-removing');
+          else if (chip.present === selectionSize) classes.push('state-all');
+          else classes.push('state-some');
+          if (chip.isMachine) classes.push('is-machine');
+
+          const partial = chip.present > 0 && chip.present < selectionSize;
+
+          return (
+            <span
+              key={chip.name}
+              class={classes.join(' ')}
+              title={
+                chip.isMachine
+                  ? `${chip.name} is generated by another plugin and will come back on the next refresh`
+                  : partial
+                    ? `On ${chip.present} of ${selectionSize} — click to apply to all`
+                    : 'Click to remove from all'
+              }
+              onClick={() => !chip.isMachine && onToggle(chip.name)}
+            >
+              <span>{chip.name}</span>
+              {partial && (
+                <span class="ts-chip-count">
+                  {chip.present}/{selectionSize}
+                </span>
+              )}
+              {!chip.isMachine && (
+                <span
+                  class="ts-chip-x"
+                  title="Remove from all selected"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onStageRemove(chip.name);
+                  }}
+                >
+                  ×
+                </span>
+              )}
+            </span>
+          );
+        })}
+
+        {[...add].filter((v) => !chips.some((c) => c.name === v)).map((value) => (
+          <span key={value} class="ts-chip state-adding" onClick={() => onToggle(value)}>
+            <span>{value}</span>
+            <span class="ts-chip-x">×</span>
+          </span>
+        ))}
+
+        <span class="ts-add-wrap">
+          <input
+            ref={inputRef}
+            class="ts-input"
+            style="min-width:170px"
+            placeholder={`+ add ${fieldLabel.toLowerCase().replace(/s$/, '')}…`}
+            value={draft}
+            onInput={(e) => {
+              setDraft((e.target as HTMLInputElement).value);
+              setHighlight(0);
+            }}
+            onKeyDown={onKeyDown}
+          />
+          {suggestions.length > 0 && (
+            <div class="ts-suggest">
+              {suggestions.map((s, i) => (
+                <div
+                  key={s.name}
+                  class={`ts-suggest-row${i === highlight ? ' is-active' : ''}`}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    commit(s.name);
+                  }}
+                >
+                  <span>{s.name}</span>
+                  <span class="ts-chip-count">{s.count.toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </span>
+      </div>
+
+      {offending.length > 0 && (
+        <div class="ts-hint" style="color:var(--ts-warn)">
+          {offending.map((c) => `"${c}"`).join(', ')} would be split into separate tags by this
+          server's delimiter settings. Pick a different name.
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,35 @@
+<div id="TagStudioPage" data-role="page" class="page type-interior pluginConfigurationPage" data-title="Tag Studio">
+  <!-- data-role="content" is what gives interior pages their clearance below the
+       header; without it the back button sits on top of the app's own toolbar. -->
+  <div data-role="content">
+    <div class="content-primary tagStudioMount" style="padding-left:0;padding-right:0"></div>
+  </div>
+  <script type="text/javascript">
+    (function () {
+      var loaded = false;
+
+      function load() {
+        if (loaded) { return; }
+        var host = document.querySelector('#TagStudioPage:not(.hide) .tagStudioMount')
+                || document.querySelector('#TagStudioPage .tagStudioMount');
+        if (!host || typeof ApiClient === 'undefined') { return; }
+        loaded = true;
+
+        // The app is fetched rather than inlined here so the bundle lives in one
+        // place. createContextualFragment (unlike innerHTML) executes the script.
+        ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('TagStudio/page.html') })
+          .then(function (html) {
+            host.appendChild(document.createRange().createContextualFragment(html));
+          })
+          .catch(function (err) {
+            host.innerHTML = '<div style="padding:24px">Could not load Tag Studio: '
+              + (err && err.message ? err.message : err) + '</div>';
+          });
+      }
+
+      var pageEl = document.querySelector('#TagStudioPage');
+      if (pageEl) { pageEl.addEventListener('pageshow', load); }
+      setTimeout(load, 0);
+    })();
+  </script>
+</div>

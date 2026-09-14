@@ -1,0 +1,655 @@
+/*
+ * The palette lives on .ts-root, not :root, so the detected-theme attribute can
+ * override it.
+ *
+ * It deliberately does NOT key off prefers-color-scheme: that reports the OS
+ * preference, while the surface we are drawn on is whatever Jellyfin theme the
+ * user picked. A light OS under a dark Jellyfin theme produced a white panel with
+ * white text, because the text colour defers to --theme-body-text-color while the
+ * background came from our own light palette. detectTheme() in main.tsx measures
+ * the real background instead and stamps data-ts-theme.
+ */
+.ts-root {
+  --ts-bg: var(--theme-background, #101010);
+  --ts-panel: rgba(255, 255, 255, 0.04);
+  --ts-panel-solid: #1b1b1b;
+  --ts-border: rgba(255, 255, 255, 0.12);
+  --ts-text: var(--theme-body-text-color, #e8e8e8);
+  --ts-dim: rgba(255, 255, 255, 0.55);
+  --ts-accent: var(--accent, #00a4dc);
+  --ts-accent-contrast: #fff;
+  --ts-row-alt: rgba(255, 255, 255, 0.025);
+  --ts-danger: #e5534b;
+  --ts-warn: #d29922;
+  --ts-radius: 4px;
+  --ts-row-height: 30px;
+
+  /* Makes the browser render native controls - select popups, scrollbars - to
+     match. Without it an OS-drawn <option> list ignores our colours entirely. */
+  color-scheme: dark;
+}
+
+.ts-root[data-ts-theme='light'] {
+  --ts-panel: rgba(0, 0, 0, 0.03);
+  --ts-panel-solid: #fff;
+  --ts-border: rgba(0, 0, 0, 0.15);
+  --ts-dim: rgba(0, 0, 0, 0.55);
+  --ts-row-alt: rgba(0, 0, 0, 0.02);
+  color-scheme: light;
+}
+
+.ts-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  color: var(--ts-text);
+  font-size: 13px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ts-root,
+.ts-root *,
+.ts-root *::before,
+.ts-root *::after {
+  /* The root included on purpose: fitToViewport puts the header clearance in
+     padding-top and relies on it counting inside the element's own height. */
+  box-sizing: border-box;
+}
+
+/* ---------- toolbar ---------- */
+
+.ts-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--ts-border);
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+
+.ts-search {
+  flex: 1 1 220px;
+  min-width: 160px;
+  padding: 6px 10px;
+  border-radius: var(--ts-radius);
+  border: 1px solid var(--ts-border);
+  background: var(--ts-panel);
+  color: inherit;
+  font: inherit;
+}
+
+.ts-search:focus,
+.ts-input:focus {
+  outline: 2px solid var(--ts-accent);
+  outline-offset: -1px;
+}
+
+.ts-select,
+.ts-input {
+  padding: 6px 8px;
+  border-radius: var(--ts-radius);
+  border: 1px solid var(--ts-border);
+  background: var(--ts-panel);
+  color: inherit;
+  font: inherit;
+}
+
+.ts-btn {
+  padding: 6px 12px;
+  border-radius: var(--ts-radius);
+  border: 1px solid var(--ts-border);
+  background: var(--ts-panel);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ts-btn:hover:not(:disabled) {
+  border-color: var(--ts-accent);
+}
+
+.ts-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ts-btn-primary {
+  background: var(--ts-accent);
+  border-color: var(--ts-accent);
+  color: var(--ts-accent-contrast);
+  font-weight: 600;
+}
+
+.ts-btn-danger:hover:not(:disabled) {
+  border-color: var(--ts-danger);
+  color: var(--ts-danger);
+}
+
+.ts-spacer {
+  flex: 1 1 auto;
+}
+
+/* ---------- column browser ---------- */
+
+.ts-browser {
+  display: flex;
+  flex: 0 0 auto;
+  height: 240px;
+  border-bottom: 1px solid var(--ts-border);
+  min-height: 90px;
+}
+
+.ts-pane {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid var(--ts-border);
+}
+
+.ts-pane:last-child {
+  border-right: none;
+}
+
+.ts-pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ts-dim);
+  border-bottom: 1px solid var(--ts-border);
+  background: var(--ts-panel);
+}
+
+.ts-pane-clear {
+  border: none;
+  background: none;
+  color: var(--ts-accent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  text-transform: none;
+  letter-spacing: 0;
+  padding: 0;
+}
+
+.ts-pane-list {
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
+
+.ts-pane-filter {
+  flex: 0 0 auto;
+  border: none;
+  border-bottom: 1px solid var(--ts-border);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.ts-pane-filter:focus {
+  outline: none;
+  background: var(--ts-panel);
+}
+
+.ts-pane-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  /* Fixed height: the pane is virtualized and the window maths depends on it. */
+  height: 22px;
+  cursor: default;
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* Striping is index-driven, not :nth-child - virtualization spacers would
+   otherwise flip the parity as you scroll. */
+.ts-pane-row.is-alt {
+  background: var(--ts-row-alt);
+}
+
+.ts-pane-row:hover {
+  background: rgba(127, 127, 127, 0.15);
+}
+
+.ts-pane-row.is-selected {
+  background: var(--ts-accent);
+  color: var(--ts-accent-contrast);
+}
+
+.ts-pane-row.is-machine {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.ts-pane-row.is-pseudo {
+  font-weight: 600;
+}
+
+.ts-pane-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ts-pane-count {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.ts-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+  color: var(--ts-dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-top: 1px solid var(--ts-border);
+}
+
+/* ---------- item table ---------- */
+
+.ts-table-wrap {
+  flex: 1 1 auto;
+  overflow: auto;
+  min-height: 0;
+  position: relative;
+}
+
+.ts-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.ts-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  text-align: left;
+  padding: 6px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ts-dim);
+  background: var(--ts-panel-solid);
+  border-bottom: 1px solid var(--ts-border);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ts-table tbody td {
+  padding: 0 8px;
+  height: var(--ts-row-height);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.08);
+}
+
+.ts-table tbody tr.is-alt {
+  background: var(--ts-row-alt);
+}
+
+.ts-table tbody tr.is-selected {
+  background: var(--ts-accent);
+  color: var(--ts-accent-contrast);
+}
+
+.ts-table tbody tr {
+  cursor: default;
+  user-select: none;
+}
+
+.ts-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.ts-lock {
+  opacity: 0.65;
+  font-size: 11px;
+}
+
+.ts-cell-tags {
+  opacity: 0.85;
+  font-size: 12px;
+}
+
+.ts-spacer-row td {
+  padding: 0 !important;
+  border: none !important;
+}
+
+/* ---------- tag dock ---------- */
+
+.ts-dock {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--ts-border);
+  padding: 8px 10px;
+  background: var(--ts-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ts-dock-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ts-dock-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ts-dim);
+}
+
+.ts-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-height: 26px;
+}
+
+.ts-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  border: 1px solid var(--ts-border);
+  background: var(--ts-panel-solid);
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* present on every selected item */
+.ts-chip.state-all {
+  background: var(--ts-accent);
+  border-color: var(--ts-accent);
+  color: var(--ts-accent-contrast);
+}
+
+/* present on some of them - the iTunes "mixed values" case */
+.ts-chip.state-some {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--ts-panel-solid),
+    var(--ts-panel-solid) 4px,
+    rgba(127, 127, 127, 0.35) 4px,
+    rgba(127, 127, 127, 0.35) 8px
+  );
+}
+
+.ts-chip.state-adding {
+  border-color: #3fb950;
+  box-shadow: inset 0 0 0 1px #3fb950;
+}
+
+.ts-chip.state-removing {
+  border-color: var(--ts-danger);
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+
+.ts-chip.is-machine {
+  opacity: 0.55;
+  font-style: italic;
+  cursor: not-allowed;
+}
+
+.ts-chip-x {
+  opacity: 0.6;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.ts-chip-count {
+  font-size: 10px;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+.ts-add-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.ts-suggest {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 4px;
+  background: var(--ts-panel-solid);
+  border: 1px solid var(--ts-border);
+  border-radius: var(--ts-radius);
+  max-height: 200px;
+  overflow-y: auto;
+  min-width: 220px;
+  z-index: 20;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+.ts-suggest-row {
+  padding: 5px 10px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ts-suggest-row:hover,
+.ts-suggest-row.is-active {
+  background: var(--ts-accent);
+  color: var(--ts-accent-contrast);
+}
+
+/* ---------- misc ---------- */
+
+.ts-status {
+  font-size: 12px;
+  color: var(--ts-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.ts-banner {
+  padding: 8px 12px;
+  border-radius: var(--ts-radius);
+  margin: 8px 10px 0;
+  border: 1px solid;
+}
+
+.ts-banner.is-error {
+  border-color: var(--ts-danger);
+  color: var(--ts-danger);
+  background: rgba(229, 83, 75, 0.08);
+}
+
+.ts-banner.is-warn {
+  border-color: var(--ts-warn);
+  color: var(--ts-warn);
+  background: rgba(210, 153, 34, 0.08);
+}
+
+.ts-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--ts-dim);
+}
+
+.ts-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.ts-modal {
+  background: var(--ts-panel-solid);
+  border: 1px solid var(--ts-border);
+  border-radius: 6px;
+  padding: 16px;
+  min-width: 380px;
+  max-width: 560px;
+  max-height: 80vh;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ts-modal h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.ts-modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.ts-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ts-field label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ts-dim);
+}
+
+.ts-hint {
+  font-size: 12px;
+  color: var(--ts-dim);
+}
+
+/* ---------- duplicate resolution ---------- */
+
+.ts-dupe-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ts-dupe-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Every spelling is offered, not just the most common one: the majority
+   spelling is frequently the typo. */
+.ts-dupe-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--ts-panel-solid);
+}
+
+.ts-dupe-option:hover:not(:disabled) {
+  border-color: var(--ts-accent);
+  background: var(--ts-accent);
+  color: var(--ts-accent-contrast);
+}
+
+.ts-dupe-option:hover:not(:disabled) .ts-chip-count {
+  opacity: 0.9;
+}
+
+/* Escaped spellings line up character-for-character only in a mono font. */
+.ts-dupe-option.is-revealed > span:first-child {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+}
+
+/* ---------- hover card ---------- */
+
+.ts-parent {
+  opacity: 0.55;
+}
+
+.ts-hovercard {
+  position: fixed;
+  z-index: 60;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--ts-border);
+  background: var(--ts-panel-solid);
+  color: var(--ts-text);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  /* The card follows the pointer; it must never eat the hover it depends on. */
+  pointer-events: none;
+}
+
+.ts-hovercard-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+
+.ts-hovercard-meta {
+  font-size: 11px;
+  color: var(--ts-dim);
+  margin-bottom: 6px;
+}
+
+.ts-hovercard-body {
+  font-size: 12px;
+  line-height: 1.45;
+  max-height: 190px;
+  overflow: hidden;
+
+  /*
+   * Long synopses fade out rather than being hard-cropped mid-word - but the fade
+   * is pinned to a fixed strip at the bottom that is exactly the padding, not a
+   * percentage of the box.
+   *
+   * Short text: the strip falls entirely in the padding, so nothing visibly fades.
+   * Clipped text: content fills through the padding, so the strip lands on real
+   * text and reads as "there is more".
+   */
+  padding-bottom: 14px;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent 100%);
+}
+
+/* Some platforms draw <option> lists without inheriting from the <select>. */
+.ts-root select,
+.ts-root select option,
+.ts-root select optgroup {
+  background-color: var(--ts-panel-solid);
+  color: var(--ts-text);
+}
