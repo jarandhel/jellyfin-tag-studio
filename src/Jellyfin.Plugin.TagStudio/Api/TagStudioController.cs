@@ -59,33 +59,69 @@ public class TagStudioController : ControllerBase
     }
 
     /// <summary>
-    /// Renames a tag or genre across the whole library. Renaming onto a value that
-    /// already exists merges the two.
+    /// Collapses several spellings into one across the whole library.
+    ///
+    /// Every source is removed and the target added in a single ApplyAsync, so the
+    /// merge is one journalled operation. Issuing it as a chain of renames meant undo
+    /// only reverted the last one.
     /// </summary>
-    [HttpPost("Rename")]
+    [HttpPost("Merge")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<ActionResult<OperationResult>> Rename(
-        [FromBody] RenameRequest request,
+    public async Task<ActionResult<OperationResult>> Merge(
+        [FromBody] MergeRequest request,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.From) || string.IsNullOrWhiteSpace(request.To))
+        if (string.IsNullOrWhiteSpace(request.To))
         {
-            return BadRequest("Both From and To are required.");
+            return BadRequest("A target value is required.");
         }
 
-        var affected = _query.FindItemsWith(request.Field, request.From);
+        var sources = request.From
+            .Where(f => !string.IsNullOrWhiteSpace(f))
+            .Where(f => !string.Equals(f, request.To, StringComparison.Ordinal))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        if (sources.Length == 0)
+        {
+            return BadRequest("At least one source value is required.");
+        }
+
+        var affected = sources
+            .SelectMany(source => _query.FindItemsWith(request.Field, source))
+            .Distinct()
+            .ToArray();
+
         var result = await _writer.ApplyAsync(
             new ApplyRequest
             {
                 ItemIds = affected,
                 Field = request.Field,
                 Add = new[] { request.To },
-                Remove = new[] { request.From }
+                Remove = sources
             },
             cancellationToken).ConfigureAwait(false);
 
         return Ok(result);
     }
+
+    /// <summary>
+    /// Renames a tag or genre across the whole library. Renaming onto a value that
+    /// already exists merges the two - it is a one-source merge.
+    /// </summary>
+    [HttpPost("Rename")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public Task<ActionResult<OperationResult>> Rename(
+        [FromBody] RenameRequest request,
+        CancellationToken cancellationToken)
+        => Merge(
+            new MergeRequest
+            {
+                From = new[] { request.From },
+                To = request.To,
+                Field = request.Field
+            },
+            cancellationToken);
 
     /// <summary>Removes a tag or genre from every item that carries it.</summary>
     [HttpPost("Delete")]

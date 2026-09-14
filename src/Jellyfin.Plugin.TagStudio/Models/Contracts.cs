@@ -123,6 +123,19 @@ public class RenameRequest
     public FieldKind Field { get; set; } = FieldKind.Tag;
 }
 
+/// <summary>
+/// Collapses several spellings into one. Kept distinct from a chain of renames so the
+/// whole merge lands as a single journalled operation and undoes in one step.
+/// </summary>
+public class MergeRequest
+{
+    public string[] From { get; set; } = Array.Empty<string>();
+
+    public string To { get; set; } = string.Empty;
+
+    public FieldKind Field { get; set; } = FieldKind.Tag;
+}
+
 public class OperationResult
 {
     public Guid OperationId { get; set; }

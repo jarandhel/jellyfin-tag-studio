@@ -515,18 +515,7 @@ export function App() {
           busy={busy}
           onRename={(from, to) => runVocabOp(() => api.rename(from, to, field))}
           onMerge={(sources, target) =>
-            runVocabOp(async () => {
-              // All renames first, then a single refresh - re-running the facets
-              // pass between each variant would be needlessly slow.
-              let itemsChanged = 0;
-              let operationId = '';
-              for (const source of sources) {
-                const result = await api.rename(source, target, field);
-                itemsChanged += result.itemsChanged;
-                operationId = result.operationId || operationId;
-              }
-              return { operationId, itemsChanged };
-            })
+            runVocabOp(() => api.merge(sources, target, field))
           }
           onDelete={(value) => runVocabOp(() => api.remove(value, field))}
           onClose={() => setShowVocab(false)}

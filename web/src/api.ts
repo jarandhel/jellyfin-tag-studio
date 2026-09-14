@@ -269,6 +269,10 @@ export const api = {
   rename: (from: string, to: string, field: FieldKind) =>
     post<any>('/Rename', { From: from, To: to, Field: fieldName(field) }).then(mapOperation),
 
+  /** One journalled operation regardless of how many spellings are collapsed. */
+  merge: (from: string[], to: string, field: FieldKind) =>
+    post<any>('/Merge', { From: from, To: to, Field: fieldName(field) }).then(mapOperation),
+
   remove: (value: string, field: FieldKind) =>
     post<any>(`/Delete?value=${encodeURIComponent(value)}&field=${fieldName(field)}`).then(
       mapOperation

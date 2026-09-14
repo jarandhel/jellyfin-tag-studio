@@ -80,7 +80,8 @@ Nothing is written until **Apply**.
 | | |
 |---|---|
 | Bulk add/remove | Tag dock, on the current selection |
-| Rename / merge | *Manage tags…* — renaming onto an existing name merges |
+| Rename / merge | *Manage tags…* — pick which spelling survives; the rest are merged into it |
+| Duplicate disambiguation | Visually identical spellings are escaped (`·` space, `U+00A0`) so the choice is meaningful |
 | Delete everywhere | *Manage tags…* — machine tags are blocked |
 | Duplicate detection | Values matching after case/punctuation stripping are flagged |
 | Undo | Toolbar or `Ctrl+Z`; every operation is journalled before/after |
@@ -110,6 +111,11 @@ Set `WriteNfoOnEdit` if Jellyfin genuinely owns the NFO files for your libraries
 
 The operation journal is written only *after* a successful save, so undo can never
 offer to roll back changes that were not persisted.
+
+Merging is a single journalled operation, not a chain of renames. `/Merge` gathers the
+union of items carrying any source spelling and issues one `ApplyAsync` with every
+source in `Remove` and the survivor in `Add` - so collapsing three variants undoes in
+one step. `/Rename` is just a one-source merge.
 
 Child propagation (series → seasons/episodes) mirrors Jellyfin's own delta logic from
 `ItemUpdateController`, respecting each child's `LockedFields`. It is an explicit
@@ -160,7 +166,8 @@ All under `/TagStudio`, all requiring an elevated token except the shell.
 | GET | `/ReservedCharacters` | delimiter characters to reject |
 | POST | `/Query` | filtered, sorted, paged item rows |
 | POST | `/Apply` | bulk add/remove on an item set |
-| POST | `/Rename` | library-wide rename or merge |
+| POST | `/Rename` | library-wide rename (a one-source merge) |
+| POST | `/Merge` | collapse several spellings into one, as one operation |
 | POST | `/Delete` | remove a value everywhere |
 | GET | `/History` | recent operations |
 | POST | `/Undo/{id}` | restore an operation's pre-state |
