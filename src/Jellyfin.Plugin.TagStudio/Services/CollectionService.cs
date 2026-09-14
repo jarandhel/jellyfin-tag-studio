@@ -20,6 +20,13 @@ public class CollectionService
     private readonly ICollectionManager _collectionManager;
     private readonly ILogger<CollectionService> _logger;
 
+    // GetLinkedChildren resolves paths, which is a lookup per member, and the index is
+    // rebuilt for every page of a query. Cache it briefly and drop it after a write.
+    private static readonly object CacheLock = new();
+    private static IReadOnlyDictionary<Guid, List<string>>? _cachedIndex;
+    private static DateTime _cachedAt = DateTime.MinValue;
+    private static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(30);
+
     public CollectionService(
         ILibraryManager libraryManager,
         ICollectionManager collectionManager,
@@ -54,18 +61,20 @@ public class CollectionService
         return false;
     }
 
+    private static DtoOptions LeanOptions() => new(false)
+    {
+        Fields = Array.Empty<MediaBrowser.Model.Querying.ItemFields>(),
+        EnableImages = false,
+        EnableUserData = false,
+        ImageTypeLimit = 0
+    };
+
     private IReadOnlyList<BoxSet> LoadBoxSets()
         => _libraryManager.GetItemList(new InternalItemsQuery
         {
             IncludeItemTypes = new[] { BaseItemKind.BoxSet },
             Recursive = true,
-            DtoOptions = new DtoOptions(false)
-            {
-                Fields = Array.Empty<MediaBrowser.Model.Querying.ItemFields>(),
-                EnableImages = false,
-                EnableUserData = false,
-                ImageTypeLimit = 0
-            }
+            DtoOptions = LeanOptions()
         }).OfType<BoxSet>().ToArray();
 
     public IReadOnlyList<CollectionEntry> GetCollections()
@@ -74,7 +83,7 @@ public class CollectionService
             {
                 Id = b.Id,
                 Name = b.Name ?? string.Empty,
-                ItemCount = MemberIds(b).Count(),
+                ItemCount = b.LinkedChildren?.Length ?? 0,
                 IsManaged = IsManaged(b.Name ?? string.Empty)
             })
             .OrderByDescending(c => c.ItemCount)
@@ -87,14 +96,31 @@ public class CollectionService
     /// individually would be a membership scan per pair; this is one pass over the
     /// memberships that exist.
     /// </summary>
+    public void InvalidateMembershipCache()
+    {
+        lock (CacheLock)
+        {
+            _cachedIndex = null;
+        }
+    }
+
     public IReadOnlyDictionary<Guid, List<string>> BuildMembershipIndex()
     {
+        lock (CacheLock)
+        {
+            if (_cachedIndex is not null && DateTime.UtcNow - _cachedAt < CacheLifetime)
+            {
+                return _cachedIndex;
+            }
+        }
+
         var index = new Dictionary<Guid, List<string>>();
+        var paths = BuildPathIndex();
 
         foreach (var boxSet in LoadBoxSets())
         {
             var name = boxSet.Name ?? string.Empty;
-            foreach (var itemId in MemberIds(boxSet))
+            foreach (var itemId in MemberIds(boxSet, paths))
             {
                 if (!index.TryGetValue(itemId, out var names))
                 {
@@ -106,19 +132,66 @@ public class CollectionService
             }
         }
 
+        lock (CacheLock)
+        {
+            _cachedIndex = index;
+            _cachedAt = DateTime.UtcNow;
+        }
+
         return index;
+    }
+
+    /// <summary>
+    /// Path -> item id for everything a collection can contain, from one query.
+    ///
+    /// Collection members are stored as paths, and the obvious resolution -
+    /// Folder.GetLinkedChildren() - calls ILibraryManager.FindByPath per member. That
+    /// runs a database query each time, with DtoOptions(true), so it eager-loads images,
+    /// user data and provider ids for what is a Limit=1 existence check. Across a few
+    /// thousand memberships it dominates everything else. One bulk query and a dictionary
+    /// does the same job.
+    /// </summary>
+    private Dictionary<string, Guid> BuildPathIndex()
+    {
+        var map = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+
+        var items = _libraryManager.GetItemList(new InternalItemsQuery
+        {
+            IncludeItemTypes = new[]
+            {
+                BaseItemKind.Movie,
+                BaseItemKind.Series,
+                BaseItemKind.Season,
+                BaseItemKind.Episode
+            },
+            Recursive = true,
+            DtoOptions = LeanOptions()
+        });
+
+        foreach (var item in items)
+        {
+            if (!string.IsNullOrEmpty(item.Path))
+            {
+                map.TryAdd(item.Path, item.Id);
+            }
+        }
+
+        return map;
     }
 
     /// <summary>
     /// The item ids in a collection.
     ///
-    /// A LinkedChild can carry its target in either ItemId or LibraryItemId, and which
-    /// one is populated depends on how the collection was built: entries created through
-    /// CreateCollectionAsync store LibraryItemId and leave ItemId null. Reading only
-    /// ItemId therefore reported the right ChildCount while listing no members at all
-    /// for any collection this plugin created.
+    /// A LinkedChild identifies its target by ItemId, LibraryItemId *or* Path, and
+    /// Jellyfin's own collection.xml stores nothing but Path:
+    ///
+    ///   &lt;CollectionItem&gt;&lt;Path&gt;G:\Movies\Dracula (1958)\...mkv&lt;/Path&gt;&lt;/CollectionItem&gt;
+    ///
+    /// Reading the id fields alone reported the right count while resolving no members at
+    /// all. Paths come from the bulk index, falling back to a direct lookup for anything
+    /// it does not cover - a collection holding a type outside the index, say.
     /// </summary>
-    private static IEnumerable<Guid> MemberIds(BoxSet boxSet)
+    private IEnumerable<Guid> MemberIds(BoxSet boxSet, IReadOnlyDictionary<string, Guid> paths)
     {
         foreach (var child in boxSet.LinkedChildren ?? Array.Empty<LinkedChild>())
         {
@@ -133,6 +206,21 @@ public class CollectionService
                 && parsed != Guid.Empty)
             {
                 yield return parsed;
+                continue;
+            }
+
+            if (string.IsNullOrEmpty(child.Path))
+            {
+                continue;
+            }
+
+            if (paths.TryGetValue(child.Path, out var byPath))
+            {
+                yield return byPath;
+            }
+            else if (_libraryManager.FindByPath(child.Path, null) is { } found)
+            {
+                yield return found.Id;
             }
         }
     }
@@ -143,6 +231,7 @@ public class CollectionService
     {
         var warnings = new List<string>();
         var byName = LoadBoxSets().ToDictionary(b => b.Name ?? string.Empty, b => b, StringComparer.OrdinalIgnoreCase);
+        var paths = BuildPathIndex();
         var changes = new List<CollectionChange>();
 
         foreach (var name in request.RemoveFrom.Distinct(StringComparer.OrdinalIgnoreCase))
@@ -161,7 +250,7 @@ public class CollectionService
             // Only the items actually in it, so undo does not re-add ones that never were.
             // Uses the same resolver as the index: ContainsLinkedChildByItemId consults
             // ItemId alone and so misses members stored under LibraryItemId.
-            var members = MemberIds(boxSet).ToHashSet();
+            var members = MemberIds(boxSet, paths).ToHashSet();
             var affected = request.ItemIds.Where(members.Contains).ToArray();
             if (affected.Length == 0)
             {
@@ -186,7 +275,7 @@ public class CollectionService
 
             if (byName.TryGetValue(name, out var boxSet))
             {
-                var members = MemberIds(boxSet).ToHashSet();
+                var members = MemberIds(boxSet, paths).ToHashSet();
                 var affected = request.ItemIds.Where(id => !members.Contains(id)).ToArray();
                 if (affected.Length == 0)
                 {
@@ -221,6 +310,8 @@ public class CollectionService
             }
         }
 
+        InvalidateMembershipCache();
+
         return new OperationResult
         {
             ItemsChanged = changes.Sum(c => (c.Added?.Length ?? 0) + (c.Removed?.Length ?? 0)),
@@ -253,6 +344,7 @@ public class CollectionService
             }
         }
 
+        InvalidateMembershipCache();
         return reverted;
     }
 
