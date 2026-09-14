@@ -46,6 +46,14 @@ public class PluginConfiguration : BasePluginConfiguration
     public int BatchSize { get; set; } = 500;
 
     /// <summary>
+    /// Let the scheduled cleanup actually delete empty collections. Off by default: the
+    /// task still runs and logs exactly what it would remove, so a few cycles can be
+    /// reviewed in the log before anything is destroyed. Deleting a collection is not
+    /// undoable, which is why this is opt-in rather than opt-out.
+    /// </summary>
+    public bool AutoDeleteEmptyCollections { get; set; }
+
+    /// <summary>
     /// Off by default. Jellyfin runs its metadata savers once per item on any update
     /// that outranks MetadataDownload, so leaving this on writes an NFO sidecar for
     /// every edited item - the dominant cost of a large bulk edit, and pointless here

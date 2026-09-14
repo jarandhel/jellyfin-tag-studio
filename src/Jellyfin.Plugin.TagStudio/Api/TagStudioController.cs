@@ -206,6 +206,31 @@ public class TagStudioController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>
+    /// Collections with no visible members, and whether each is safe to remove. Reported
+    /// rather than removed - see DeleteEmptyCollections for why that split matters.
+    /// </summary>
+    [HttpGet("Collections/Empty")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult<EmptyCollectionReport> GetEmptyCollections()
+    {
+        return Ok(_collections.FindEmpty());
+    }
+
+    /// <summary>
+    /// Deletes empty collections. Defaults to a dry run, and this is the one operation in
+    /// the plugin with no undo - a deleted collection cannot be restored by writing a
+    /// field back, so it is never journalled and never implied.
+    /// </summary>
+    [HttpPost("Collections/Empty/Delete")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult<DeleteEmptyCollectionsResult> DeleteEmptyCollections(
+        [FromBody] DeleteEmptyCollectionsRequest request,
+        CancellationToken cancellationToken)
+    {
+        return Ok(_collections.DeleteEmpty(request, cancellationToken));
+    }
+
     [HttpGet("History")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public ActionResult<IReadOnlyList<Operation>> History([FromQuery] int take = 25)

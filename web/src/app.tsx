@@ -15,6 +15,7 @@ import { ColumnBrowser, type PaneSpec } from './components/ColumnBrowser';
 import { ItemTable } from './components/ItemTable';
 import { TagDock, type ChipModel } from './components/TagDock';
 import { VocabularyModal } from './components/VocabularyModal';
+import { EmptyCollectionsModal } from './components/EmptyCollectionsModal';
 
 // Sentinels for the pseudo-rows. A literal NUL byte here would make the whole file
 // read as binary to git and grep, so it is written as an escape: same value, still
@@ -65,6 +66,7 @@ export function App() {
 
   const [machineExpanded, setMachineExpanded] = useState(false);
   const [showVocab, setShowVocab] = useState(false);
+  const [showEmpty, setShowEmpty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [streaming, setStreaming] = useState(false);
@@ -490,9 +492,13 @@ export function App() {
               (selected.size ? ` · ${selected.size.toLocaleString()} selected` : '')}
         </span>
 
-        {mode !== 'collections' && (
+        {mode !== 'collections' ? (
           <button class="ts-btn" onClick={() => setShowVocab(true)} disabled={busy}>
             Manage {fieldLabel.toLowerCase()}…
+          </button>
+        ) : (
+          <button class="ts-btn" onClick={() => setShowEmpty(true)} disabled={busy}>
+            Empty collections…
           </button>
         )}
         <button class="ts-btn" onClick={undoLast} disabled={!lastOperation || busy}>
@@ -561,6 +567,13 @@ export function App() {
           }
           onDelete={(value) => runVocabOp(() => api.remove(value, field))}
           onClose={() => setShowVocab(false)}
+        />
+      )}
+
+      {showEmpty && (
+        <EmptyCollectionsModal
+          onClose={() => setShowEmpty(false)}
+          onDeleted={() => void loadFacets()}
         />
       )}
     </div>

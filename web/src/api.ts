@@ -55,6 +55,34 @@ export interface CollectionEntry {
   isManaged: boolean;
 }
 
+/** Why a collection reads as empty; only 'NoMembers' is safe to act on. */
+export type EmptyReason = 'NoMembers' | 'Unresolvable';
+
+export interface EmptyCollection {
+  id: string;
+  name: string;
+  /** Member entries recorded on the collection, resolvable or not. */
+  linkedChildCount: number;
+  reason: EmptyReason;
+  isManaged: boolean;
+  deletable: boolean;
+  /** Why it is being left alone; empty when deletable. */
+  blocker: string;
+}
+
+export interface EmptyCollectionReport {
+  scanned: number;
+  collections: EmptyCollection[];
+  deletableCount: number;
+}
+
+export interface DeleteEmptyResult {
+  dryRun: boolean;
+  deleted: string[];
+  skipped: string[];
+  warnings: string[];
+}
+
 export interface Facets {
   tags: VocabularyEntry[];
   genres: VocabularyEntry[];
@@ -217,6 +245,18 @@ const mapCollection = (c: any): CollectionEntry => ({
   isManaged: !!c?.IsManaged
 });
 
+const mapEmptyCollection = (c: any): EmptyCollection => ({
+  id: c?.Id ?? '',
+  name: c?.Name ?? '',
+  linkedChildCount: c?.LinkedChildCount ?? 0,
+  // The server serialises enums as strings; anything unrecognised is treated as the
+  // cautious case rather than the deletable one.
+  reason: c?.Reason === 'NoMembers' ? 'NoMembers' : 'Unresolvable',
+  isManaged: !!c?.IsManaged,
+  deletable: !!c?.Deletable,
+  blocker: c?.Blocker ?? ''
+});
+
 const mapOperation = (o: any): OperationResult => ({
   operationId: o?.OperationId ?? '',
   itemsChanged: o?.ItemsChanged ?? 0,
@@ -315,6 +355,26 @@ export const api = {
       AddTo: body.addTo,
       RemoveFrom: body.removeFrom
     }).then(mapOperation),
+
+  emptyCollections: () =>
+    request<any>('/Collections/Empty').then(
+      (r): EmptyCollectionReport => ({
+        scanned: r?.Scanned ?? 0,
+        collections: asArray<any>(r?.Collections).map(mapEmptyCollection),
+        deletableCount: r?.DeletableCount ?? 0
+      })
+    ),
+
+  /** dryRun defaults to true here as well as on the server - this one has no undo. */
+  deleteEmptyCollections: (ids: string[], dryRun = true) =>
+    post<any>('/Collections/Empty/Delete', { Ids: ids, DryRun: dryRun }).then(
+      (r): DeleteEmptyResult => ({
+        dryRun: !!r?.DryRun,
+        deleted: asArray<string>(r?.Deleted),
+        skipped: asArray<string>(r?.Skipped),
+        warnings: asArray<string>(r?.Warnings)
+      })
+    ),
 
   undo: (operationId: string) => post<any>(`/Undo/${operationId}`).then(mapOperation)
 };
