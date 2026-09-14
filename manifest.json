@@ -9,6 +9,15 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "1.0.11.0",
+        "changelog": "Release v1.0.11.0",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/jarandhel/jellyfin-tag-studio/releases/download/v1.0.11.0/tag-studio_1.0.11.0.zip",
+        "checksum": "fdd3efdc0dc7ce3c0b4a71d2b4038b68",
+        "timestamp": "2026-09-14T01:46:01Z",
+        "dependencies": []
+      },
+      {
         "version": "1.0.9.0",
         "changelog": "Release v1.0.9.0",
         "targetAbi": "10.11.0.0",
