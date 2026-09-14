@@ -1,17 +1,12 @@
-# Upstream: `LibraryManager.FindByPath` requests every field for a `Limit = 1` lookup
+# Upstream: listing collections is ~0.4s per collection
 
 Draft for a Jellyfin issue/PR. Not part of the plugin.
 
 ## Summary
 
-`LibraryManager.FindByPath` runs an existence lookup with `DtoOptions(true)`, which asks
-for every field. `BaseItemRepository.ApplyNavigations` gates its eager loads on exactly
-those flags, so a `Limit = 1` path lookup eager-loads images, user data, provider ids and
-locked fields on an `AsSingleQuery`.
-
-This is on the hot path for collections. Collection membership is stored by path, so
-listing collections resolves one `FindByPath` per member, each an expensive multi-join
-query with no path-level cache.
+Listing `BoxSet` items costs roughly 0.4s each and scales linearly, while ordinary item
+queries are three orders of magnitude cheaper. **The cause is not yet identified** - the
+obvious candidate was measured and ruled out (below).
 
 ## The code
 
@@ -82,26 +77,34 @@ For contrast, `limit=1000` over movies is **0.63s**. Cost scales with the number
 collections materialised, at roughly 0.4s each, and is unaffected by `fields` or whether
 a `userId` is supplied.
 
-## Suggested fix
+## Hypothesis tested and ruled out
 
-Narrow the `DtoOptions`. The method returns a `BaseItem` for an existence/identity check;
-callers such as `GetLinkedChild` use the result's identity, not its images or user data:
+`FindByPath` runs its lookup with `DtoOptions(true)`, and `ApplyNavigations` gates eager
+loads on exactly those flags - so a `Limit = 1` path lookup pulls Images, UserData,
+Provider and LockedFields on an `AsSingleQuery`. Since collection membership is stored by
+path, `BaseItem.FindLinkedChild` calls it once per member, which looked like an obvious
+culprit.
 
-```csharp
-DtoOptions = new DtoOptions(false)
-{
-    EnableImages = false,
-    EnableUserData = false,
-    ImageTypeLimit = 0
-}
-```
+It is not. Patching `FindLinkedChild` to resolve identity via `GetItemIds` (lean
+`DtoOptions`) and then load through the id-cached `GetItemById`, built from the v10.11.5
+tag and run side by side against a copy of the same library:
 
-A path-keyed cache alongside the existing id cache would help further, but needs
-invalidation on add/remove/move and is a larger change. The `DtoOptions` narrowing is a
-one-line change with no behavioural difference for the lookup itself.
+| | run 1 | run 2 |
+|---|---|---|
+| stock 10.11.5 | 62.8s | 52.7s |
+| patched | 66.1s | 56.0s |
 
-## Corroborating datapoint
+Identical results, same order, no improvement. (Both figures are inflated relative to the
+table above because two servers were competing for the machine.) `FindByPath` is not on
+the hot path for *listing* collections.
 
-The same mistake, made and then fixed in a plugin against the same library: a facets pass
-over ~2,200 items took **4.5s** with default `DtoOptions` and **0.4s** asking only for
-`ItemFields.Settings`. Roughly a 10x difference from the same four `Include` calls.
+A corroborating datapoint from the same library: fetching 100 **members of** a large smart
+collection - which certainly does resolve `LinkedChildren` - takes **2.4s**, while
+**listing** 100 collections takes 37-52s. Whatever dominates is in materialising the
+BoxSet itself, not in resolving its members.
+
+## Still worth reporting
+
+The measurements stand on their own and reproduce trivially. Somebody who knows the DTO
+layer will likely recognise the cause immediately; the value here is the profile, not a
+diagnosis.
