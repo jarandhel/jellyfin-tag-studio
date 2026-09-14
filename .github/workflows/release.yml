@@ -15,6 +15,13 @@ on:
 permissions:
   contents: write
 
+# Re-pushing a tag re-triggers this while the first run may still be publishing. Two
+# runs racing over one release produced a manifest describing a different artifact
+# than the one uploaded.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -96,7 +103,6 @@ jobs:
           (cd "$STAGE" && zip -r -X "$GITHUB_WORKSPACE/$ASSET" .)
 
           echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
-          echo "checksum=$(md5sum "$ASSET" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Publish release
         env:
@@ -111,10 +117,31 @@ jobs:
             --notes "$NOTES" \
             --verify-tag || gh release upload "v$VERSION" "$ASSET" --clobber
 
+      # The manifest must describe the artifact Jellyfin will actually fetch, so the
+      # checksum is taken from the published asset rather than the local file. A
+      # mismatch here is what a failed install reports, and it is invisible until
+      # someone tries to install.
+      - name: Verify published asset
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          ASSET: ${{ steps.package.outputs.asset }}
+        run: |
+          rm -f "downloaded-$ASSET"
+          gh release download "v$VERSION" --pattern "$ASSET" --output "downloaded-$ASSET" --clobber
+          PUBLISHED=$(md5sum "downloaded-$ASSET" | cut -d' ' -f1)
+          LOCAL=$(md5sum "$ASSET" | cut -d' ' -f1)
+          if [ "$PUBLISHED" != "$LOCAL" ]; then
+            echo "::error::Published asset ($PUBLISHED) differs from the one built here ($LOCAL)"
+            exit 1
+          fi
+          echo "checksum=$PUBLISHED" >> "$GITHUB_OUTPUT"
+
       - name: Update manifest
         env:
           VERSION: ${{ steps.version.outputs.version }}
-          CHECKSUM: ${{ steps.package.outputs.checksum }}
+          CHECKSUM: ${{ steps.verify.outputs.checksum }}
           ASSET: ${{ steps.package.outputs.asset }}
         run: |
           ENTRY=$(jq -n \
@@ -136,4 +163,12 @@ jobs:
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add manifest.json
           git commit -m "Update plugin manifest for v$VERSION" || exit 0
-          git push origin HEAD:main
+
+          # main can move while this runs; rebasing beats failing after the release
+          # is already published, which would leave the manifest without the entry.
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then exit 0; fi
+            git pull --rebase origin main || exit 1
+          done
+          echo "::error::Could not push the manifest update after 3 attempts"
+          exit 1

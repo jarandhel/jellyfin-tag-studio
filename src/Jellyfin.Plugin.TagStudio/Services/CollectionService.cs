@@ -74,7 +74,7 @@ public class CollectionService
             {
                 Id = b.Id,
                 Name = b.Name ?? string.Empty,
-                ItemCount = b.LinkedChildren?.Length ?? 0,
+                ItemCount = MemberIds(b).Count(),
                 IsManaged = IsManaged(b.Name ?? string.Empty)
             })
             .OrderByDescending(c => c.ItemCount)
@@ -94,13 +94,8 @@ public class CollectionService
         foreach (var boxSet in LoadBoxSets())
         {
             var name = boxSet.Name ?? string.Empty;
-            foreach (var child in boxSet.LinkedChildren ?? Array.Empty<LinkedChild>())
+            foreach (var itemId in MemberIds(boxSet))
             {
-                if (child.ItemId is not { } itemId || itemId == Guid.Empty)
-                {
-                    continue;
-                }
-
                 if (!index.TryGetValue(itemId, out var names))
                 {
                     names = new List<string>();
@@ -112,6 +107,34 @@ public class CollectionService
         }
 
         return index;
+    }
+
+    /// <summary>
+    /// The item ids in a collection.
+    ///
+    /// A LinkedChild can carry its target in either ItemId or LibraryItemId, and which
+    /// one is populated depends on how the collection was built: entries created through
+    /// CreateCollectionAsync store LibraryItemId and leave ItemId null. Reading only
+    /// ItemId therefore reported the right ChildCount while listing no members at all
+    /// for any collection this plugin created.
+    /// </summary>
+    private static IEnumerable<Guid> MemberIds(BoxSet boxSet)
+    {
+        foreach (var child in boxSet.LinkedChildren ?? Array.Empty<LinkedChild>())
+        {
+            if (child.ItemId is { } itemId && itemId != Guid.Empty)
+            {
+                yield return itemId;
+                continue;
+            }
+
+            if (!string.IsNullOrEmpty(child.LibraryItemId)
+                && Guid.TryParse(child.LibraryItemId, out var parsed)
+                && parsed != Guid.Empty)
+            {
+                yield return parsed;
+            }
+        }
     }
 
     public async Task<OperationResult> ApplyAsync(
@@ -136,7 +159,10 @@ public class CollectionService
             }
 
             // Only the items actually in it, so undo does not re-add ones that never were.
-            var affected = request.ItemIds.Where(boxSet.ContainsLinkedChildByItemId).ToArray();
+            // Uses the same resolver as the index: ContainsLinkedChildByItemId consults
+            // ItemId alone and so misses members stored under LibraryItemId.
+            var members = MemberIds(boxSet).ToHashSet();
+            var affected = request.ItemIds.Where(members.Contains).ToArray();
             if (affected.Length == 0)
             {
                 continue;
@@ -160,7 +186,8 @@ public class CollectionService
 
             if (byName.TryGetValue(name, out var boxSet))
             {
-                var affected = request.ItemIds.Where(id => !boxSet.ContainsLinkedChildByItemId(id)).ToArray();
+                var members = MemberIds(boxSet).ToHashSet();
+                var affected = request.ItemIds.Where(id => !members.Contains(id)).ToArray();
                 if (affected.Length == 0)
                 {
                     continue;
