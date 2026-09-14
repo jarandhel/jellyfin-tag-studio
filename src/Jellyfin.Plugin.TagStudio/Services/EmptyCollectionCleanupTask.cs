@@ -39,14 +39,20 @@ public class EmptyCollectionCleanupTask : IScheduledTask
 
     public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
     {
-        // Weekly. These appear a few at a time as media leaves the library, so there is
-        // nothing to gain from checking more often, and a slow cadence keeps the log
-        // readable for anyone reviewing before switching deletion on.
+        // Weekly, and deliberately NOT on startup even though that is when husks appear:
+        // Jellyfin's "Clean up collections and playlists" runs on a startup trigger, so a
+        // drive that is slow to mount can have its items stripped out of collections right
+        // as the server comes up. Those collections are then genuinely memberless, and the
+        // unresolvable guard cannot tell them apart from real ones. Waiting lets a library
+        // scan put the members back before anything is deleted.
+        //
+        // 05:00 rather than 04:00 so this lands after the SmartLists cleanup that shares
+        // the slot - its collections should settle before we judge them empty.
         yield return new TaskTriggerInfo
         {
             Type = TaskTriggerInfoType.WeeklyTrigger,
             DayOfWeek = DayOfWeek.Sunday,
-            TimeOfDayTicks = TimeSpan.FromHours(4).Ticks
+            TimeOfDayTicks = TimeSpan.FromHours(5).Ticks
         };
     }
 

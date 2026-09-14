@@ -420,7 +420,7 @@ public class CollectionService
         {
             var linked = boxSet.LinkedChildren?.Length ?? 0;
 
-            if (linked > 0 && ResolvableMemberCount(boxSet, paths) > 0)
+            if (linked > 0 && HasResolvableMember(boxSet, paths))
             {
                 continue;
             }
@@ -451,10 +451,14 @@ public class CollectionService
         };
     }
 
-    private int ResolvableMemberCount(BoxSet boxSet, IReadOnlyDictionary<string, Guid> paths)
-        => MemberIds(boxSet, paths)
-            .Distinct()
-            .Count(id => _libraryManager.GetItemById(id) is not null);
+    /// <summary>
+    /// Whether anything in this collection still resolves. Deliberately an existence test
+    /// rather than a count: the question is only ever "is this empty", and counting walks
+    /// every member of collections that are obviously full - 10,000+ lookups to learn what
+    /// the first one already answered.
+    /// </summary>
+    private bool HasResolvableMember(BoxSet boxSet, IReadOnlyDictionary<string, Guid> paths)
+        => MemberIds(boxSet, paths).Any(id => _libraryManager.GetItemById(id) is not null);
 
     /// <summary>
     /// The reasons we decline to delete something that looks empty. Each is a way a
@@ -552,7 +556,7 @@ public class CollectionService
 
             // Re-check rather than trust the scan; a bulk add could have landed in between.
             var linked = boxSet.LinkedChildren?.Length ?? 0;
-            if (linked > 0 || ResolvableMemberCount(boxSet, paths) > 0)
+            if (linked > 0 || HasResolvableMember(boxSet, paths))
             {
                 skipped.Add("\"" + target.Name + "\"" + " - gained members since the scan");
                 continue;
