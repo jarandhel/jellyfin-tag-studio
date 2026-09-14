@@ -5,6 +5,7 @@ import {
   FIELD_GENRE,
   FIELD_TAG,
   isAuthenticated,
+  type CollectionEntry,
   type Facets,
   type FieldKind,
   type ItemRow,
@@ -52,7 +53,12 @@ export function App() {
   const [totalCount, setTotalCount] = useState(0);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [field, setField] = useState<FieldKind>(FIELD_TAG);
+  // Collections are not a BaseItem field, so they cannot be a FieldKind. The dock
+  // still drives them through the same tri-state chips, hence a UI-level mode that
+  // maps onto a FieldKind only for tags and genres.
+  const [mode, setMode] = useState<'tags' | 'genres' | 'collections'>('tags');
+  const field: FieldKind = mode === 'genres' ? FIELD_GENRE : FIELD_TAG;
+  const [collections, setCollections] = useState<CollectionEntry[]>([]);
   const [add, setAdd] = useState<Set<string>>(new Set());
   const [remove, setRemove] = useState<Set<string>>(new Set());
   const [propagate, setPropagate] = useState(false);
@@ -79,9 +85,14 @@ export function App() {
 
   const loadFacets = useCallback(async () => {
     try {
-      const [f, r] = await Promise.all([api.facets(itemTypes), api.reservedCharacters()]);
+      const [f, r, c] = await Promise.all([
+        api.facets(itemTypes),
+        api.reservedCharacters(),
+        api.collections()
+      ]);
       setFacets(f);
       setReserved(r);
+      setCollections(c);
     } catch (e) {
       setError(String((e as Error).message ?? e));
     }
@@ -164,21 +175,29 @@ export function App() {
     [items, selected]
   );
 
-  const fieldLabel = field === FIELD_TAG ? 'Tags' : 'Genres';
+  const fieldLabel =
+    mode === 'collections' ? 'Collections' : mode === 'genres' ? 'Genres' : 'Tags';
 
   const chips = useMemo<ChipModel[]>(() => {
     const counts = new Map<string, number>();
     for (const item of selectedItems) {
-      for (const value of field === FIELD_TAG ? item.tags : item.genres) {
+      const values =
+        mode === 'collections' ? item.collections : mode === 'genres' ? item.genres : item.tags;
+      for (const value of values) {
         counts.set(value, (counts.get(value) ?? 0) + 1);
       }
     }
 
-    const machine = new Set(
-      (field === FIELD_TAG ? facets.tags : facets.genres)
-        .filter((v) => v.isMachine)
-        .map((v) => v.name)
-    );
+    // Collections another plugin regenerates are locked for the same reason machine
+    // tags are: editing one looks like it worked until the generator next runs.
+    const machine =
+      mode === 'collections'
+        ? new Set(collections.filter((c) => c.isManaged).map((c) => c.name))
+        : new Set(
+            (mode === 'genres' ? facets.genres : facets.tags)
+              .filter((v) => v.isMachine)
+              .map((v) => v.name)
+          );
 
     return [...counts.entries()]
       .map(([name, present]) => ({ name, present, isMachine: machine.has(name) }))
@@ -188,9 +207,20 @@ export function App() {
           b.present - a.present ||
           a.name.localeCompare(b.name)
       );
-  }, [selectedItems, field, facets]);
+  }, [selectedItems, mode, facets, collections]);
 
-  const vocabulary = field === FIELD_TAG ? facets.tags : facets.genres;
+  const vocabulary: VocabularyEntry[] =
+    mode === 'collections'
+      ? collections.map((c) => ({
+          name: c.name,
+          kind: FIELD_TAG,
+          count: c.itemCount,
+          isMachine: c.isManaged,
+          normalizedKey: ''
+        }))
+      : mode === 'genres'
+        ? facets.genres
+        : facets.tags;
 
   const panes = useMemo<PaneSpec[]>(() => {
     const tagEntries = [
@@ -286,6 +316,8 @@ export function App() {
 
   const refreshAfterWrite = async () => {
     clearStaged();
+    // loadFacets also reloads the collection list, so a newly created collection
+    // appears as a suggestion straight away.
     await Promise.all([loadItems(), loadFacets()]);
   };
 
@@ -293,13 +325,20 @@ export function App() {
     setBusy(true);
     setError(null);
     try {
-      const result = await api.apply({
-        itemIds: [...selected],
-        add: [...add],
-        remove: [...remove],
-        field,
-        propagateToChildren: propagate
-      });
+      const result =
+        mode === 'collections'
+          ? await api.applyCollections({
+              itemIds: [...selected],
+              addTo: [...add],
+              removeFrom: [...remove]
+            })
+          : await api.apply({
+              itemIds: [...selected],
+              add: [...add],
+              remove: [...remove],
+              field,
+              propagateToChildren: propagate
+            });
 
       if (result.warnings?.length) {
         setError(result.warnings.join(' '));
@@ -424,14 +463,15 @@ export function App() {
 
         <select
           class="ts-select"
-          value={String(field)}
+          value={mode}
           onChange={(e) => {
-            setField(Number((e.target as HTMLSelectElement).value) as FieldKind);
+            setMode((e.target as HTMLSelectElement).value as typeof mode);
             clearStaged();
           }}
         >
-          <option value="0">Edit tags</option>
-          <option value="1">Edit genres</option>
+          <option value="tags">Edit tags</option>
+          <option value="genres">Edit genres</option>
+          <option value="collections">Edit collections</option>
         </select>
 
         {hasFilters && (
@@ -450,9 +490,11 @@ export function App() {
               (selected.size ? ` · ${selected.size.toLocaleString()} selected` : '')}
         </span>
 
-        <button class="ts-btn" onClick={() => setShowVocab(true)} disabled={busy}>
-          Manage {fieldLabel.toLowerCase()}…
-        </button>
+        {mode !== 'collections' && (
+          <button class="ts-btn" onClick={() => setShowVocab(true)} disabled={busy}>
+            Manage {fieldLabel.toLowerCase()}…
+          </button>
+        )}
         <button class="ts-btn" onClick={undoLast} disabled={!lastOperation || busy}>
           Undo
         </button>
@@ -496,7 +538,7 @@ export function App() {
         remove={remove}
         fieldLabel={fieldLabel}
         propagate={propagate}
-        showPropagate={itemTypes.includes('Series')}
+        showPropagate={mode !== 'collections' && itemTypes.includes('Series')}
         busy={busy}
         reserved={reserved}
         onToggle={toggleChip}

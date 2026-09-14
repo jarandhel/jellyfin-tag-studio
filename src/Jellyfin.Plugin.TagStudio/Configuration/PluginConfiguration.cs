@@ -33,6 +33,13 @@ public class PluginConfiguration : BasePluginConfiguration
     public int MaxQueryPageSize { get; set; } = 500;
 
     /// <summary>
+    /// Semicolon-separated markers identifying collections another plugin generates
+    /// (SmartCollections names them "... [Smart]"). Editing one by hand appears to work
+    /// until the generator next runs, so these are flagged and refused.
+    /// </summary>
+    public string ManagedCollectionMarkers { get; set; } = "[Smart]";
+
+    /// <summary>
     /// How many items go into one UpdateItemsAsync call - i.e. one repository
     /// transaction. Larger batches are faster but hold the write open for longer.
     /// </summary>

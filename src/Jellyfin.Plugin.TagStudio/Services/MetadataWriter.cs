@@ -16,15 +16,18 @@ public class MetadataWriter
 {
     private readonly ILibraryManager _libraryManager;
     private readonly OperationJournal _journal;
+    private readonly CollectionService _collections;
     private readonly ILogger<MetadataWriter> _logger;
 
     public MetadataWriter(
         ILibraryManager libraryManager,
         OperationJournal journal,
+        CollectionService collections,
         ILogger<MetadataWriter> logger)
     {
         _libraryManager = libraryManager;
         _journal = journal;
+        _collections = collections;
         _logger = logger;
     }
 
@@ -198,6 +201,13 @@ public class MetadataWriter
         }
 
         var elapsed = await SaveBatchAsync(pending, cancellationToken).ConfigureAwait(false);
+
+        // Undo has to cover collection membership too, or it would silently restore only
+        // half of a mixed operation.
+        var revertedMemberships = operation.CollectionChanges.Count > 0
+            ? await _collections.RevertAsync(operation.CollectionChanges, cancellationToken).ConfigureAwait(false)
+            : 0;
+
         await _journal.MarkUndoneAsync(operation, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation(
@@ -210,9 +220,27 @@ public class MetadataWriter
         return new OperationResult
         {
             OperationId = operation.Id,
-            ItemsChanged = pending.Count,
+            ItemsChanged = pending.Count + revertedMemberships,
             ItemsSkipped = skipped
         };
+    }
+
+    /// <summary>Journals a collection-only operation so it shows up in undo like any other.</summary>
+    public async Task<Guid> RecordCollectionOperationAsync(
+        string description,
+        IReadOnlyList<Models.CollectionChange> changes,
+        CancellationToken cancellationToken)
+    {
+        var operation = new Operation
+        {
+            Id = Guid.NewGuid(),
+            Timestamp = DateTime.UtcNow,
+            Description = description,
+            CollectionChanges = changes.ToList()
+        };
+
+        await _journal.RecordAsync(operation, cancellationToken).ConfigureAwait(false);
+        return operation.Id;
     }
 
     /// <summary>

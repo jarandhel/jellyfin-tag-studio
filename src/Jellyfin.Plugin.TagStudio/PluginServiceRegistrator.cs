@@ -10,6 +10,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
         serviceCollection.AddSingleton<OperationJournal>();
+        serviceCollection.AddSingleton<CollectionService>();
         serviceCollection.AddSingleton<MetadataWriter>();
         serviceCollection.AddSingleton<LibraryQueryService>();
         serviceCollection.AddHostedService<PluginPageRegistrar>();

@@ -14,15 +14,18 @@ public class TagStudioController : ControllerBase
 {
     private readonly LibraryQueryService _query;
     private readonly MetadataWriter _writer;
+    private readonly CollectionService _collections;
     private readonly OperationJournal _journal;
 
     public TagStudioController(
         LibraryQueryService query,
         MetadataWriter writer,
+        CollectionService collections,
         OperationJournal journal)
     {
         _query = query;
         _writer = writer;
+        _collections = collections;
         _journal = journal;
     }
 
@@ -152,6 +155,53 @@ public class TagStudioController : ControllerBase
                 Remove = new[] { value }
             },
             cancellationToken).ConfigureAwait(false);
+
+        return Ok(result);
+    }
+
+    /// <summary>Every collection, with its size and whether another plugin owns it.</summary>
+    [HttpGet("Collections")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult<IReadOnlyList<CollectionEntry>> GetCollections()
+    {
+        return Ok(_collections.GetCollections());
+    }
+
+    /// <summary>
+    /// Bulk add to and remove from collections. A name that does not exist yet is
+    /// created. Journalled so it undoes like any other operation.
+    /// </summary>
+    [HttpPost("Collections/Apply")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<ActionResult<OperationResult>> ApplyCollections(
+        [FromBody] CollectionApplyRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.ItemIds.Length == 0)
+        {
+            return BadRequest("No items selected.");
+        }
+
+        var result = await _collections.ApplyAsync(request, cancellationToken).ConfigureAwait(false);
+
+        if (result.CollectionChanges.Count > 0)
+        {
+            var parts = new List<string>();
+            if (request.AddTo.Length > 0)
+            {
+                parts.Add("+" + string.Join(", ", request.AddTo));
+            }
+
+            if (request.RemoveFrom.Length > 0)
+            {
+                parts.Add("-" + string.Join(", ", request.RemoveFrom));
+            }
+
+            result.OperationId = await _writer.RecordCollectionOperationAsync(
+                $"Collections {string.Join(" ", parts)} on {request.ItemIds.Length} item(s)",
+                result.CollectionChanges,
+                cancellationToken).ConfigureAwait(false);
+        }
 
         return Ok(result);
     }

@@ -32,6 +32,12 @@ public class Operation
     public bool Undone { get; set; }
 
     public List<JournalEntry> Entries { get; set; } = new();
+
+    /// <summary>
+    /// Collection membership changes. Separate from Entries because membership lives on
+    /// the BoxSet, not the item, so it cannot be captured as a before/after field value.
+    /// </summary>
+    public List<Models.CollectionChange> CollectionChanges { get; set; } = new();
 }
 
 /// <summary>

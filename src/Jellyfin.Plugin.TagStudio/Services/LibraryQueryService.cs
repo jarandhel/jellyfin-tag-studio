@@ -24,11 +24,16 @@ public class LibraryQueryService
     };
 
     private readonly ILibraryManager _libraryManager;
+    private readonly CollectionService _collections;
     private readonly ILogger<LibraryQueryService> _logger;
 
-    public LibraryQueryService(ILibraryManager libraryManager, ILogger<LibraryQueryService> logger)
+    public LibraryQueryService(
+        ILibraryManager libraryManager,
+        CollectionService collections,
+        ILogger<LibraryQueryService> logger)
     {
         _libraryManager = libraryManager;
+        _collections = collections;
         _logger = logger;
     }
 
@@ -311,6 +316,7 @@ public class LibraryQueryService
             query.EnableTotalRecordCount = true;
 
             var page = _libraryManager.GetItemsResult(query);
+            var memberships = _collections.BuildMembershipIndex();
             _logger.LogDebug(
                 "Tag Studio query: {Count} of {Total} in {Elapsed}ms",
                 page.Items.Count,
@@ -319,7 +325,7 @@ public class LibraryQueryService
 
             return new ItemQueryResponse
             {
-                Items = page.Items.Select(Project).ToArray(),
+                Items = page.Items.Select(i => Project(i, memberships)).ToArray(),
                 TotalCount = page.TotalRecordCount
             };
         }
@@ -344,12 +350,13 @@ public class LibraryQueryService
         }
 
         var materialised = filtered.ToArray();
+        var inMemoryMemberships = _collections.BuildMembershipIndex();
         return new ItemQueryResponse
         {
             Items = materialised
                 .Skip(request.StartIndex)
                 .Take(Math.Clamp(request.Limit, 1, MaxPageSize))
-                .Select(Project)
+                .Select(i => Project(i, inMemoryMemberships))
                 .ToArray(),
             TotalCount = materialised.Length
         };
@@ -371,7 +378,7 @@ public class LibraryQueryService
         return new[] { (field, direction) };
     }
 
-    private static ItemRow Project(BaseItem item) => new()
+    private static ItemRow Project(BaseItem item, IReadOnlyDictionary<Guid, List<string>> memberships) => new()
     {
         Id = item.Id,
         Name = item.Name ?? string.Empty,
@@ -389,6 +396,9 @@ public class LibraryQueryService
         Tags = item.Tags ?? Array.Empty<string>(),
         Genres = item.Genres ?? Array.Empty<string>(),
         Studios = item.Studios ?? Array.Empty<string>(),
+        Collections = memberships.TryGetValue(item.Id, out var inCollections)
+            ? inCollections.ToArray()
+            : Array.Empty<string>(),
         DateCreated = item.DateCreated,
         TagsLocked = item.LockedFields.Contains(MetadataField.Tags),
         GenresLocked = item.LockedFields.Contains(MetadataField.Genres)
