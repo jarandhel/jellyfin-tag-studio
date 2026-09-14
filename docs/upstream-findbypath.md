@@ -132,14 +132,38 @@ servers at the same moment:
 No improvement. (Measuring simultaneously matters: run-to-run variance on one server
 reaches 25%, enough to manufacture a convincing result from nothing.)
 
-## Where that leaves it
+## The finding that matters most
 
-Two plausible causes examined and eliminated. The profile is reproducible and the symptom
-is real, but the cause is unidentified. Anyone picking this up can skip `FindByPath` and
-`LibraryFolderIds`.
+Cost is **inversely** correlated with collection size. Splitting the 239 collections by
+member count and fetching each cohort by id:
 
-Worth noting separately: nothing in Jellyfin maintains `LibraryFolderIds` when collection
-membership changes - `ICollectionManager` never touches it. Since `IsVisible` decides who
-can see a collection from that cached value, a collection edited outside a metadata
-refresh can carry a stale one. That is a correctness question rather than a performance
-one, and it is independent of everything above.
+| cohort | members held | time |
+|---|---|---|
+| 100 smallest | 87 | 74.5s / 67.1s |
+| 100 largest | 5,065 | 11.3s / 10.2s |
+
+Reproducible with the order reversed (large first: 10.1s / 9.6s, then small: 66.2s /
+70.9s), so it is not cache warming. The two cohorts are otherwise near-identical - images,
+provider ids, paths, premiere dates all present in the same proportions - and neither has
+broken member references (87 of 87 resolve in the slow cohort; 5,065 of 5,066 in the fast
+one).
+
+Whatever dominates is per-collection and gets *cheaper* as membership grows, which rules
+out every "resolving members is expensive" explanation, including the two below.
+
+## Hypotheses eliminated
+
+1. **`FindByPath` eager-loading.** Patched `FindLinkedChild` to resolve identity via
+   `GetItemIds` then load through the id-cached `GetItemById`; built from v10.11.5 and run
+   side by side. Identical results, no timing change.
+2. **The `LibraryFolderIds` cache being null.** Refreshed all 239 collections on a copy and
+   measured both servers simultaneously: 35.4/32.8/34.2s refreshed against 30.1/32.3s not.
+3. **Member count / blob size.** Contradicted by the inverse correlation above.
+4. **Unresolvable member paths.** The slow cohort has none.
+
+## What would settle it
+
+A profiler. `dotnet-trace` against the server while issuing
+`GET /Items?includeItemTypes=BoxSet&recursive=true&limit=100` would name the hot method in
+minutes, where code reading has produced four wrong answers. Everything above is offered
+as a reproduction case, not a diagnosis.
