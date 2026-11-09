@@ -2,7 +2,7 @@
 # Builds the SPA, compiles the plugin, and deploys it into Jellyfin.
 #
 # Linux/macOS counterpart of build.ps1. The plugin itself is platform independent -
-# net9.0 with no RuntimeIdentifier - so the only thing that differs is where the
+# net10.0 with no RuntimeIdentifier - so the only thing that differs is where the
 # toolchain and the Jellyfin data directory live.
 #
 # Deploys into a version-stamped folder rather than overwriting, because Jellyfin holds a
@@ -63,7 +63,7 @@ echo "==> building plugin ($version)"
 
 echo "==> deploying to $dest"
 mkdir -p "$dest"
-if ! cp "$proj/bin/Release/net9.0/Jellyfin.Plugin.TagStudio.dll" "$dest/" 2>/dev/null; then
+if ! cp "$proj/bin/Release/net10.0/Jellyfin.Plugin.TagStudio.dll" "$dest/" 2>/dev/null; then
     echo "Jellyfin is holding version $version open. Bump <Version> in the csproj and run" >&2
     echo "again, or stop Jellyfin first - a loaded plugin assembly cannot be replaced." >&2
     exit 1
@@ -77,7 +77,7 @@ cat > "$dest/meta.json" <<JSON
   "overview": "Bulk tag, genre and collection management.",
   "description": "Bulk tag, genre and collection management with an iTunes-style column browser.",
   "owner": "local",
-  "targetAbi": "10.11.0.0",
+  "targetAbi": "12.0.0.0",
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.0000000Z)",
   "version": "$version",
   "status": "Active",

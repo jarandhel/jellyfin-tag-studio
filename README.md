@@ -4,7 +4,7 @@ A full-screen bulk tag and genre manager for Jellyfin, modelled on the iTunes 20
 column browser: filter panes narrow a sortable table, you multi-select rows, and edit tags
 in bulk from a dock at the bottom.
 
-Built for **Jellyfin 10.11**.
+Built for **Jellyfin 12.x** (versions up to 1.0.18 target 10.11).
 
 ![The column browser filtered to untagged items, over the virtualized item table](docs/screenshot.png)
 
@@ -211,7 +211,7 @@ click / ctrl-click / shift-click in both the panes and the table
 
 ## Build
 
-Requires the **.NET 9 SDK** and **Node 18+**.
+Requires the **.NET 10 SDK** and **Node 18+**.
 
 ```powershell
 ./build.ps1     # Windows
@@ -221,7 +221,7 @@ Requires the **.NET 9 SDK** and **Node 18+**.
 ./build.sh      # Linux / macOS
 ```
 
-The plugin itself is platform independent - `net9.0`, no `RuntimeIdentifier`, every path
+The plugin itself is platform independent - `net10.0`, no `RuntimeIdentifier`, every path
 through `Path.Combine` or Jellyfin's `IApplicationPaths` - so a DLL built on any OS runs
 on any Jellyfin host. Only the deploy scripts differ, and only in where they look for the
 toolchain and the data directory (`/var/lib/jellyfin`, `/config` for the linuxserver.io

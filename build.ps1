@@ -69,7 +69,7 @@ Push-Location $proj; & $dotnet build -c Release -v minimal; Pop-Location
 Write-Host "==> deploying to $dest" -ForegroundColor Cyan
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
 try {
-    Copy-Item (Join-Path $proj 'bin/Release/net9.0/Jellyfin.Plugin.TagStudio.dll') -Destination $dest -Force -ErrorAction Stop
+    Copy-Item (Join-Path $proj 'bin/Release/net10.0/Jellyfin.Plugin.TagStudio.dll') -Destination $dest -Force -ErrorAction Stop
 } catch [System.IO.IOException] {
     throw "Jellyfin is holding version $version open. Bump <Version> in the csproj and " +
           "run again, or stop Jellyfin first - a loaded plugin assembly cannot be replaced in place."
@@ -83,7 +83,7 @@ $meta = @"
   "overview": "Bulk tag, genre and collection management.",
   "description": "Bulk tag, genre and collection management with an iTunes-style column browser.",
   "owner": "local",
-  "targetAbi": "10.11.0.0",
+  "targetAbi": "12.0.0.0",
   "timestamp": "$(Get-Date -Format 'yyyy-MM-ddTHH:mm:ss.0000000Z')",
   "version": "$version",
   "status": "Active",
